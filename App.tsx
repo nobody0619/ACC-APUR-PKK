@@ -113,23 +113,69 @@ export default function App() {
     if (isCorrect) {
         // --- CORRECT DROP ---
         
-        // Remove from source
-        if (source === 'bank') {
-             // IMPORTANT: Only remove THIS specific item ID. 
-             // Duplicate penalty items MUST REMAIN in the bank as clutter.
-             setBankItems(prev => prev.filter(i => i.id !== item.id));
-        } else if (source === 'zone' && sourceZoneId) {
-            setPlacedItems(prev => ({
-                ...prev,
-                [sourceZoneId]: prev[sourceZoneId].filter(i => i.id !== item.id)
-            }));
-        }
-
-        // Add to target
+        // 1. Update placedItems first
         setPlacedItems(prev => ({
             ...prev,
-            [targetZoneFullId]: [item]
+            [targetZoneFullId]: [item],
+            // If moved from another zone, clear that zone
+            ...(source === 'zone' && sourceZoneId ? { [sourceZoneId]: [] } : {})
         }));
+
+        // 2. Manage Bank Items (Cleanup Logic)
+        setBankItems(prevBank => {
+            let newBank = [...prevBank];
+
+            // Remove the exact item being moved
+            if (source === 'bank') {
+                newBank = newBank.filter(i => i.id !== item.id);
+            }
+
+            // SMART CLEANUP: 
+            // Calculate how many times this specific item type (originalId) is still needed in the UNFILLED slots.
+            // We only keep that many copies in the bank. This removes penalty duplicates.
+            
+            let neededCount = 0;
+            
+            level.rows.forEach(row => {
+                const opZoneId = `${row.id}-op`;
+                const mainZoneId = row.hasOperator ? `${row.id}-main` : row.id;
+
+                // Check Operator Slot
+                if (row.hasOperator) {
+                     // Check if this slot is the target of current drop OR already filled
+                     const isFilled = (targetZoneFullId === opZoneId) || (placedItems[opZoneId] && placedItems[opZoneId].length > 0 && placedItems[opZoneId][0].id !== item.id); // check ID to avoid counting moving item as filled in old spot if applicable
+                     if (!isFilled) {
+                         // If unfilled, does it match our item?
+                         if (row.correctOperator === item.label) {
+                             neededCount++;
+                         }
+                     }
+                }
+
+                // Check Main Slot
+                if (row.correctLabel || row.acceptsCategory) {
+                    const isFilled = (targetZoneFullId === mainZoneId) || (placedItems[mainZoneId] && placedItems[mainZoneId].length > 0 && placedItems[mainZoneId][0].id !== item.id);
+                    if (!isFilled) {
+                        // If unfilled, does it match our item?
+                        // Note: We only count strict Label matches. 
+                        // Category items (like 'Sewa') are unique per label in the bank, so they won't match 'correctLabel' of other rows usually,
+                        // and they don't have a specific requirement count > 1.
+                        if (row.correctLabel === item.originalId) {
+                            neededCount++;
+                        }
+                    }
+                }
+            });
+
+            // Filter the bank to separate "Items of this type" and "Other items"
+            const sameTypeItems = newBank.filter(i => i.originalId === item.originalId);
+            const otherItems = newBank.filter(i => i.originalId !== item.originalId);
+
+            // Keep only 'neededCount' of this type
+            const keptSameItems = sameTypeItems.slice(0, neededCount);
+
+            return [...otherItems, ...keptSameItems];
+        });
         
     } else {
         // --- INCORRECT DROP ---
