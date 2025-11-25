@@ -272,10 +272,10 @@ export default function App() {
       <div className="min-h-screen flex flex-col items-center justify-center bg-paper p-4">
         <div className="bg-white p-8 rounded-lg shadow-xl max-w-md w-full border border-stone-200">
           <h1 className="text-3xl font-serif text-center mb-6 text-stone-800 font-bold">Akaun Master</h1>
-          <p className="text-center text-stone-500 mb-8">Masukkan nama anda untuk mula.</p>
+          <p className="text-center text-stone-500 mb-8">Enter your name to start.</p>
           <input
             type="text"
-            placeholder="Nama Pelajar"
+            placeholder="Student Name"
             className="w-full p-3 border-2 border-stone-300 rounded mb-6 focus:border-blue-500 focus:outline-none font-mono"
             value={userName}
             onChange={(e) => setUserName(e.target.value)}
@@ -285,7 +285,7 @@ export default function App() {
             className="w-full"
             onClick={() => setCurrentScreen(ScreenState.MENU)}
           >
-            Seterusnya
+            Start
           </Button>
         </div>
       </div>
@@ -297,8 +297,8 @@ export default function App() {
       <div className="min-h-screen bg-paper p-8">
         <div className="max-w-5xl mx-auto">
           <header className="flex justify-between items-center mb-12 border-b border-stone-300 pb-4">
-            <h1 className="text-2xl font-serif font-bold">Selamat Datang, {userName}</h1>
-            <Button variant="secondary" onClick={() => setCurrentScreen(ScreenState.LEADERBOARD)}>Lihat Rekod</Button>
+            <h1 className="text-2xl font-serif font-bold">Welcome, {userName}</h1>
+            <Button variant="secondary" onClick={() => setCurrentScreen(ScreenState.LEADERBOARD)}>Leaderboard</Button>
           </header>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -348,11 +348,11 @@ export default function App() {
             <h2 className="text-sm md:text-lg font-bold text-blue-300">Bank Item</h2>
             <div className="mt-2 flex justify-between items-center bg-stone-900 p-2 rounded">
                 <div className="text-center">
-                    <span className="block text-[10px] text-stone-500">MASA</span>
+                    <span className="block text-[10px] text-stone-500">TIME</span>
                     <span className="font-mono text-sm md:text-xl">{formatTime(timer)}</span>
                 </div>
                 <div className="text-center">
-                    <span className="block text-[10px] text-stone-500">KESILAPAN</span>
+                    <span className="block text-[10px] text-stone-500">MISTAKES</span>
                     <span className="font-mono text-sm md:text-xl text-red-400">{mistakes}</span>
                 </div>
             </div>
@@ -362,7 +362,7 @@ export default function App() {
             <div className="flex flex-wrap gap-2 content-start">
                 {bankItems.length === 0 && (
                     <div className="text-center text-stone-500 w-full py-4 italic text-xs">
-                        Bank Kosong
+                        Bank Empty
                     </div>
                 )}
                 {bankItems.map((item) => (
@@ -378,7 +378,7 @@ export default function App() {
             </div>
         </div>
         <div className="mt-2 pt-2 border-t border-stone-600">
-             <Button variant="secondary" className="w-full text-xs py-1" onClick={() => setCurrentScreen(ScreenState.MENU)}>Keluar</Button>
+             <Button variant="secondary" className="w-full text-xs py-1" onClick={() => setCurrentScreen(ScreenState.MENU)}>Exit</Button>
         </div>
       </div>
 
@@ -492,23 +492,23 @@ const LeaderboardView = ({ onBack }: { onBack: () => void }) => {
     return (
         <div className="min-h-screen bg-paper p-4 md:p-8 flex flex-col items-center">
             <div className="max-w-3xl w-full bg-white p-6 rounded shadow-lg border border-stone-200">
-                <h2 className="text-2xl md:text-3xl font-serif font-bold text-center mb-6 text-ink">Papan Skor</h2>
+                <h2 className="text-2xl md:text-3xl font-serif font-bold text-center mb-6 text-ink">Leaderboard</h2>
                 
                 <div className="overflow-x-auto">
                     <table className="w-full text-left">
                         <thead>
                             <tr className="bg-stone-100 text-stone-600 text-xs md:text-sm uppercase">
                                 <th className="p-3">#</th>
-                                <th className="p-3">Nama</th>
+                                <th className="p-3">Name</th>
                                 <th className="p-3">Level</th>
-                                <th className="p-3 text-center">Kesilapan</th>
-                                <th className="p-3 text-right">Masa</th>
+                                <th className="p-3 text-center">Mistakes</th>
+                                <th className="p-3 text-right">Time</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-stone-100 text-sm md:text-base">
                             {scores.length === 0 ? (
                                 <tr>
-                                    <td colSpan={5} className="p-6 text-center text-stone-400">Belum ada rekod.</td>
+                                    <td colSpan={5} className="p-6 text-center text-stone-400">No records yet.</td>
                                 </tr>
                             ) : (
                                 scores.map((entry, idx) => (
@@ -530,7 +530,7 @@ const LeaderboardView = ({ onBack }: { onBack: () => void }) => {
                 </div>
 
                 <div className="mt-8 flex justify-center">
-                    <Button onClick={onBack}>Kembali ke Menu</Button>
+                    <Button onClick={onBack}>Back to Menu</Button>
                 </div>
             </div>
         </div>
