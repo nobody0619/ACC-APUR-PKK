@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { ScreenState, GameItem, LeaderboardEntry, LevelConfig, DropZoneData } from './types';
 import { LEVELS } from './constants';
 import { saveScore, getScores } from './services/leaderboardService';
@@ -26,6 +26,12 @@ export default function App() {
   
   // Feedback state
   const [incorrectZoneId, setIncorrectZoneId] = useState<string | null>(null);
+
+  // Mobile/Touch State
+  const dragItemRef = useRef<GameItem | null>(null);
+  const dragSourceRef = useRef<'bank' | 'zone' | null>(null);
+  const dragSourceZoneIdRef = useRef<string | undefined>(undefined);
+  const ghostRef = useRef<HTMLDivElement | null>(null);
 
   // Initialization
   useEffect(() => {
@@ -57,26 +63,11 @@ export default function App() {
     setCurrentScreen(ScreenState.GAME);
   };
 
-  const handleDragStart = (e: React.DragEvent, item: GameItem, source: 'bank' | 'zone', sourceZoneId?: string) => {
-    e.dataTransfer.setData('application/json', JSON.stringify({ item, source, sourceZoneId }));
-    e.dataTransfer.effectAllowed = 'move';
-  };
-
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-  };
-
-  // targetZoneId can be simple 'rowId' (for normal rows) or 'rowId-op' (for operator) or 'rowId-main' (for label)
-  const handleDrop = (e: React.DragEvent, targetZoneFullId: string) => {
-    e.preventDefault();
-    const dataStr = e.dataTransfer.getData('application/json');
-    if (!dataStr) return;
-
-    const { item, source, sourceZoneId } = JSON.parse(dataStr) as { item: GameItem, source: 'bank' | 'zone', sourceZoneId?: string };
-    
+  // --- CORE DROP LOGIC (Shared by Mouse & Touch) ---
+  const processDrop = (item: GameItem, source: 'bank' | 'zone', sourceZoneId: string | undefined, targetZoneFullId: string) => {
     const level = LEVELS[selectedLevelId];
     
-    // Parse the target ID to find the Row Definition and Sub-Zone Type
+    // Parse target ID
     let rowId = targetZoneFullId;
     let subZone: 'main' | 'op' = 'main';
 
@@ -91,158 +82,212 @@ export default function App() {
     const rowDef = level.rows.find(r => r.id === rowId);
     if (!rowDef) return;
 
-    // Check if occupied
+    // Check occupancy
     if (placedItems[targetZoneFullId]?.length > 0) {
         if (placedItems[targetZoneFullId][0].id === item.id) return;
         return; 
     }
 
-    // --- Validation Logic ---
+    // --- Validation ---
     let isCorrect = false;
-
     if (subZone === 'op') {
-      // Validate Operator
-      isCorrect = rowDef.hasOperator === true && rowDef.correctOperator === item.label; // Operator usually matches by Label (Tambah/Tolak)
+      isCorrect = rowDef.hasOperator === true && rowDef.correctOperator === item.label;
     } else {
-      // Validate Main Content
       const isExactMatch = rowDef.correctLabel === item.originalId;
       const isCategoryMatch = !!rowDef.acceptsCategory && rowDef.acceptsCategory === item.category;
       isCorrect = isExactMatch || isCategoryMatch;
     }
 
     if (isCorrect) {
-        // --- CORRECT DROP ---
+        // --- CORRECT ---
         
-        // 1. Update placedItems first
-        setPlacedItems(prev => ({
-            ...prev,
-            [targetZoneFullId]: [item],
-            // If moved from another zone, clear that zone
-            ...(source === 'zone' && sourceZoneId ? { [sourceZoneId]: [] } : {})
-        }));
-
-        // 2. Manage Bank Items (Cleanup Logic)
-        setBankItems(prevBank => {
-            let newBank = [...prevBank];
-
-            // Remove the exact item being moved
-            if (source === 'bank') {
-                newBank = newBank.filter(i => i.id !== item.id);
-            }
-
-            // SMART CLEANUP: 
-            // Calculate how many times this specific item type (originalId) is still needed in the UNFILLED slots.
-            // We only keep that many copies in the bank. This removes penalty duplicates.
-            
-            let neededCount = 0;
-            
-            level.rows.forEach(row => {
-                const opZoneId = `${row.id}-op`;
-                const mainZoneId = row.hasOperator ? `${row.id}-main` : row.id;
-
-                // Check Operator Slot
-                if (row.hasOperator) {
-                     // Check if this slot is the target of current drop OR already filled
-                     const isFilled = (targetZoneFullId === opZoneId) || (placedItems[opZoneId] && placedItems[opZoneId].length > 0 && placedItems[opZoneId][0].id !== item.id); // check ID to avoid counting moving item as filled in old spot if applicable
-                     if (!isFilled) {
-                         // If unfilled, does it match our item?
-                         if (row.correctOperator === item.label) {
-                             neededCount++;
-                         }
-                     }
-                }
-
-                // Check Main Slot
-                if (row.correctLabel || row.acceptsCategory) {
-                    const isFilled = (targetZoneFullId === mainZoneId) || (placedItems[mainZoneId] && placedItems[mainZoneId].length > 0 && placedItems[mainZoneId][0].id !== item.id);
-                    if (!isFilled) {
-                        // If unfilled, does it match our item?
-                        // Note: We only count strict Label matches. 
-                        // Category items (like 'Sewa') are unique per label in the bank, so they won't match 'correctLabel' of other rows usually,
-                        // and they don't have a specific requirement count > 1.
-                        if (row.correctLabel === item.originalId) {
-                            neededCount++;
-                        }
-                    }
-                }
-            });
-
-            // Filter the bank to separate "Items of this type" and "Other items"
-            const sameTypeItems = newBank.filter(i => i.originalId === item.originalId);
-            const otherItems = newBank.filter(i => i.originalId !== item.originalId);
-
-            // Keep only 'neededCount' of this type
-            const keptSameItems = sameTypeItems.slice(0, neededCount);
-
-            return [...otherItems, ...keptSameItems];
-        });
-        
-    } else {
-        // --- INCORRECT DROP ---
-        
-        // Temporarily move item to target to show "Wrong" state
-        if (source === 'bank') {
-            setBankItems(prev => prev.filter(i => i.id !== item.id));
-        } else if (sourceZoneId) {
-            setPlacedItems(prev => ({
-                ...prev,
-                [sourceZoneId]: prev[sourceZoneId].filter(i => i.id !== item.id)
-            }));
+        // 1. Remove from source immediately
+        const currentBank = source === 'bank' ? bankItems.filter(i => i.id !== item.id) : [...bankItems];
+        if (source === 'bank') setBankItems(currentBank);
+        if (source === 'zone' && sourceZoneId) {
+             setPlacedItems(prev => ({ ...prev, [sourceZoneId]: [] }));
         }
 
-        setPlacedItems(prev => ({
-            ...prev,
-            [targetZoneFullId]: [item]
-        }));
+        // 2. SURPLUS CHECK
+        // Count how many matching items remain in bank vs how many OTHER slots need them
+        const remainingInBank = currentBank.filter(i => {
+             if (item.category) return i.category === item.category;
+             if (subZone === 'op') return i.label === item.label;
+             return i.originalId === item.originalId;
+        }).length;
 
+        let neededByOthers = 0;
+        level.rows.forEach(row => {
+            const mZone = row.hasOperator ? `${row.id}-main` : row.id;
+            const oZone = `${row.id}-op`;
+
+            // Check Main
+            if (mZone !== targetZoneFullId) {
+                const isEmpty = !placedItems[mZone] || placedItems[mZone].length === 0;
+                // Important: If we are dragging from a zone, we already cleared sourceZoneId from placedItems logic above virtually, 
+                // but checking `placedItems` directly might still see it if we haven't updated state yet. 
+                // However, sourceZoneId logic handles the removal.
+                // We just need to check strictly other zones.
+                if (mZone !== sourceZoneId && isEmpty) {
+                     const matches = (row.acceptsCategory && row.acceptsCategory === item.category) ||
+                                     (row.correctLabel === item.originalId);
+                     if (matches) neededByOthers++;
+                }
+            }
+            // Check Op
+            if (row.hasOperator && oZone !== targetZoneFullId) {
+                if (oZone !== sourceZoneId && (!placedItems[oZone] || placedItems[oZone].length === 0)) {
+                    const matches = row.correctOperator === item.label;
+                    if (matches) neededByOthers++;
+                }
+            }
+        });
+
+        if (remainingInBank > neededByOthers) {
+            // SURPLUS DETECTED -> "Consume" logic
+            // 1. Visually place it
+            setPlacedItems(prev => ({ ...prev, [targetZoneFullId]: [item] }));
+            
+            // 2. Wait 1 second, then remove it
+            setTimeout(() => {
+                setPlacedItems(prev => ({ ...prev, [targetZoneFullId]: [] }));
+            }, 1000);
+
+        } else {
+            // NORMAL FILL
+            setPlacedItems(prev => ({ ...prev, [targetZoneFullId]: [item] }));
+        }
+
+    } else {
+        // --- INCORRECT ---
+        
+        // Visual "Bounce"
+        if (source === 'bank') setBankItems(prev => prev.filter(i => i.id !== item.id));
+        else if (sourceZoneId) setPlacedItems(prev => ({ ...prev, [sourceZoneId]: [] }));
+
+        setPlacedItems(prev => ({ ...prev, [targetZoneFullId]: [item] }));
         setIncorrectZoneId(targetZoneFullId);
         setMistakes(m => m + 1);
 
-        // Penalty Logic
         setTimeout(() => {
-            // Remove from the wrong zone
-            setPlacedItems(prev => ({
-                ...prev,
-                [targetZoneFullId]: prev[targetZoneFullId].filter(i => i.id !== item.id)
-            }));
-            
+            // Remove from wrong zone
+            setPlacedItems(prev => ({ ...prev, [targetZoneFullId]: [] }));
             setIncorrectZoneId(null);
 
-            // Add back to BANK with PENALTY duplicates
+            // Add back to BANK with PENALTIES
             const copy1: GameItem = { ...item, id: `${item.id}-copy1-${Date.now()}` };
             const copy2: GameItem = { ...item, id: `${item.id}-copy2-${Date.now()}` };
-            
-            // Add original + 2 copies
             setBankItems(prev => [...prev, item, copy1, copy2].sort(() => Math.random() - 0.5));
-
         }, 3000);
     }
   };
 
-  // Check Win Condition
+
+  // --- MOUSE EVENTS ---
+  const handleDragStart = (e: React.DragEvent, item: GameItem, source: 'bank' | 'zone', sourceZoneId?: string) => {
+    e.dataTransfer.setData('application/json', JSON.stringify({ item, source, sourceZoneId }));
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+  };
+
+  const handleDrop = (e: React.DragEvent, targetZoneFullId: string) => {
+    e.preventDefault();
+    const dataStr = e.dataTransfer.getData('application/json');
+    if (!dataStr) return;
+    const { item, source, sourceZoneId } = JSON.parse(dataStr);
+    processDrop(item, source, sourceZoneId, targetZoneFullId);
+  };
+
+
+  // --- TOUCH EVENTS (Mobile) ---
+  const handleTouchStart = (e: React.TouchEvent, item: GameItem, source: 'bank' | 'zone', sourceZoneId?: string) => {
+    // Prevent default to stop scrolling/zooming while dragging
+    // However, we only want to prevent default if we are actually dragging.
+    // The touch-none CSS class on the item usually handles the scroll prevention.
+    
+    dragItemRef.current = item;
+    dragSourceRef.current = source;
+    dragSourceZoneIdRef.current = sourceZoneId;
+
+    // Create Ghost Element
+    const touch = e.touches[0];
+    const ghost = document.createElement('div');
+    ghost.innerText = item.label;
+    ghost.style.position = 'fixed';
+    ghost.style.left = `${touch.clientX}px`;
+    ghost.style.top = `${touch.clientY}px`;
+    ghost.style.zIndex = '1000';
+    ghost.style.backgroundColor = 'white';
+    ghost.style.padding = '4px 8px';
+    ghost.style.border = '2px solid #3b82f6';
+    ghost.style.borderRadius = '4px';
+    ghost.style.pointerEvents = 'none'; // Essential so elementFromPoint ignores the ghost
+    ghost.style.fontSize = '12px';
+    ghost.style.boxShadow = '0 4px 6px rgba(0,0,0,0.1)';
+    
+    document.body.appendChild(ghost);
+    ghostRef.current = ghost;
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (!ghostRef.current) return;
+    const touch = e.touches[0];
+    ghostRef.current.style.left = `${touch.clientX}px`;
+    ghostRef.current.style.top = `${touch.clientY}px`;
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (!dragItemRef.current || !ghostRef.current) return;
+
+    const touch = e.changedTouches[0];
+    const targetEl = document.elementFromPoint(touch.clientX, touch.clientY);
+    
+    // Find closest drop zone
+    const dropZone = targetEl?.closest('[data-zone-id]');
+    
+    if (dropZone) {
+        const targetZoneId = dropZone.getAttribute('data-zone-id');
+        if (targetZoneId) {
+            processDrop(dragItemRef.current, dragSourceRef.current!, dragSourceZoneIdRef.current, targetZoneId);
+        }
+    }
+
+    // Cleanup
+    if (ghostRef.current) {
+        document.body.removeChild(ghostRef.current);
+        ghostRef.current = null;
+    }
+    dragItemRef.current = null;
+    dragSourceRef.current = null;
+    dragSourceZoneIdRef.current = undefined;
+  };
+
+
+  // --- WIN CHECK ---
   useEffect(() => {
     if (currentScreen !== ScreenState.GAME) return;
 
-    // Check if ALL required zones are filled.
-    // Bank might NOT be empty because of penalty duplicates.
     const level = LEVELS[selectedLevelId];
-    
     let allFilled = true;
     for (const row of level.rows) {
-      if (row.isStatic) continue;
+      if (row.isStatic && !row.correctLabel) continue;
       
-      // Check Main Zone (if it expects a value)
-      // If row has correctLabel OR acceptsCategory, it needs a value.
+      // Check Main Zone
       if ((row.correctLabel || row.acceptsCategory) && row.correctLabel !== '') {
-         // Using row.id + suffix logic
          const mainZoneId = row.hasOperator ? `${row.id}-main` : row.id;
+         // Special check: even if waiting for surplus animation (placedItems has item), it counts as filled momentarily.
+         // But we want to ensure the USER has finished.
+         // Actually, if we consume surplus, the slot becomes EMPTY. So `allFilled` becomes false.
+         // This is correct: the user must drag AGAIN until no surplus remains.
          if (!placedItems[mainZoneId] || placedItems[mainZoneId].length === 0) {
            allFilled = false;
            break;
          }
       }
-
-      // Check Operator Zone
+      // Check Op Zone
       if (row.hasOperator) {
          const opZoneId = `${row.id}-op`;
          if (!placedItems[opZoneId] || placedItems[opZoneId].length === 0) {
@@ -275,7 +320,7 @@ export default function App() {
     setCurrentScreen(ScreenState.LEADERBOARD);
   };
 
-  // --- COMPONENT HELPERS ---
+  // --- RENDER HELPERS ---
   
   const renderDropZone = (
     zoneId: string, 
@@ -286,6 +331,7 @@ export default function App() {
     extraClasses: string = ""
   ) => (
     <div 
+        data-zone-id={zoneId} // For Mobile Drop Detection
         onDragOver={handleDragOver}
         onDrop={(e) => handleDrop(e, zoneId)}
         className={`
@@ -296,7 +342,6 @@ export default function App() {
             ${extraClasses}
         `}
     >
-        {/* Removed text hint inside empty box as requested */}
         {items.map(item => (
             <div 
                 key={item.id} 
@@ -311,7 +356,7 @@ export default function App() {
     </div>
   );
 
-  // --- RENDERERS ---
+  // --- SCREENS ---
 
   if (currentScreen === ScreenState.WELCOME) {
     return (
@@ -385,7 +430,6 @@ export default function App() {
 
   const activeLevel = LEVELS[selectedLevelId];
 
-  // --- GAME VIEW ---
   return (
     <div className="min-h-screen bg-paperDark flex flex-col md:flex-row h-screen overflow-hidden">
       {/* Sidebar (Draggables) */}
@@ -416,7 +460,10 @@ export default function App() {
                         key={item.id}
                         draggable
                         onDragStart={(e) => handleDragStart(e, item, 'bank')}
-                        className="bg-white text-ink py-1 px-2 rounded shadow cursor-grab active:cursor-grabbing hover:bg-blue-50 text-xs font-medium border-l-2 border-blue-500 select-none animate-in fade-in zoom-in duration-200 max-w-full truncate"
+                        onTouchStart={(e) => handleTouchStart(e, item, 'bank')}
+                        onTouchMove={handleTouchMove}
+                        onTouchEnd={handleTouchEnd}
+                        className="bg-white text-ink py-1 px-2 rounded shadow cursor-grab active:cursor-grabbing hover:bg-blue-50 text-xs font-medium border-l-2 border-blue-500 select-none animate-in fade-in zoom-in duration-200 max-w-full truncate touch-none"
                     >
                         {item.label}
                     </div>
@@ -450,7 +497,7 @@ export default function App() {
                 {activeLevel.rows.map((row) => {
                     const rowId = row.id;
 
-                    // 1. Static Rows (Purely visual text, e.g. "Untung Kasar" start of Level 2)
+                    // 1. Static Rows
                     if (row.isStatic && row.correctLabel) {
                          return (
                             <div key={rowId} className="grid grid-cols-12 gap-1 items-center font-bold">
@@ -460,7 +507,6 @@ export default function App() {
                         );
                     }
                     if (row.isStatic && !row.correctLabel) {
-                        // Just a value row (sums)
                         return (
                              <div key={rowId} className="grid grid-cols-12 gap-1 items-center font-bold">
                                 <div className="col-span-6 pr-4"></div>
@@ -471,7 +517,7 @@ export default function App() {
 
                     // 2. Interactive Rows
                     const opZoneId = `${rowId}-op`;
-                    const mainZoneId = row.hasOperator ? `${rowId}-main` : rowId; // If no operator, ID is original
+                    const mainZoneId = row.hasOperator ? `${rowId}-main` : rowId; 
                     
                     const opItems = placedItems[opZoneId] || [];
                     const mainItems = placedItems[mainZoneId] || [];
@@ -481,7 +527,7 @@ export default function App() {
 
                     return (
                         <div key={rowId} className="grid grid-cols-12 gap-1 items-center min-h-[2.5rem]">
-                            {/* Label Column (Split or Single) */}
+                            {/* Label Column */}
                             <div className="col-span-6 pr-1 relative flex gap-1">
                                 {row.hasOperator && (
                                     <div className="w-1/4 min-w-[60px]">

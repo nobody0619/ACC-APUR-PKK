@@ -13,8 +13,8 @@ const OP_TOLAK = createItem('Tolak');
 
 // Level 1: Akaun Perdagangan
 const LEVEL_1_ROWS: DropZoneData[] = [
-  { id: 'l1-jualan', correctLabel: 'Jualan', displayValue: 'x', indent: 0, colIndex: 2 },
-  { id: 'l1-pulangan-jualan', hasOperator: true, correctOperator: 'Tolak', correctLabel: 'Pulangan Jualan', displayValue: '(x)', indent: 0, colIndex: 2 }, // Indent 0 for cleaner align with operator
+  { id: 'l1-jualan', correctLabel: 'Jualan', displayValue: 'xx', indent: 0, colIndex: 2 },
+  { id: 'l1-pulangan-jualan', hasOperator: true, correctOperator: 'Tolak', correctLabel: 'Pulangan Jualan', displayValue: '(x)', indent: 0, colIndex: 2 }, 
   { id: 'l1-jualan-bersih', correctLabel: 'Jualan Bersih', displayValue: 'xx', indent: 0, colIndex: 2 },
   
   // "(-) Kos Jualan" split into two draggable items
@@ -56,7 +56,7 @@ const LEVEL_1_ITEMS = [
 
 // Level 2: Akaun Untung Rugi
 const LEVEL_2_ROWS: DropZoneData[] = [
-  // Anchor - Now Interactive
+  // Anchor - Interactive
   { id: 'l2-start', correctLabel: 'Untung Kasar', displayValue: 'xx', indent: 0, colIndex: 2 },
   
   // Draggable Header: Tambah Hasil
@@ -64,10 +64,10 @@ const LEVEL_2_ROWS: DropZoneData[] = [
   
   // Unordered Hasil Slots (2 items)
   { id: 'l2-h1', acceptsCategory: 'HASIL', displayValue: 'x', indent: 0, colIndex: 1 },
-  { id: 'l2-h2', acceptsCategory: 'HASIL', displayValue: 'x', indent: 0, colIndex: 1 }, // Indent fixed to 0
+  { id: 'l2-h2', acceptsCategory: 'HASIL', displayValue: 'x', indent: 0, colIndex: 1 }, 
   
   // Sum of Hasil
-  { id: 'l2-h-sum', correctLabel: '', displayValue: 'xx', indent: 0, isStatic: true, colIndex: 2 }, // Empty label, just value
+  { id: 'l2-h-sum', correctLabel: '', displayValue: 'xx', indent: 0, isStatic: true, colIndex: 2 },
 
   // Draggable Header: Tolak Belanja
   { id: 'l2-h-belanja', hasOperator: true, correctOperator: 'Tolak', correctLabel: 'Belanja', displayValue: '', indent: 0, isHeaderRow: true, colIndex: 0 },
@@ -81,9 +81,9 @@ const LEVEL_2_ROWS: DropZoneData[] = [
   { id: 'l2-b6', acceptsCategory: 'BELANJA', displayValue: 'x', indent: 0, colIndex: 1 },
   { id: 'l2-b7', acceptsCategory: 'BELANJA', displayValue: 'x', indent: 0, colIndex: 1 },
 
-  { id: 'l2-b-sum', correctLabel: '', displayValue: '(xx)', indent: 0, isStatic: true, colIndex: 2 }, // Empty label, just value
+  { id: 'l2-b-sum', correctLabel: '', displayValue: '(xx)', indent: 0, isStatic: true, colIndex: 2 },
 
-  // Untung Bersih - Now Interactive
+  // Untung Bersih - Interactive
   { id: 'l2-end', correctLabel: 'Untung Bersih', displayValue: 'xx', indent: 0, colIndex: 2 },
 ];
 
@@ -113,11 +113,6 @@ const LEVEL_3_ROWS: DropZoneData[] = [
     ...LEVEL_2_ROWS.slice(1) 
 ];
 
-// For Level 3 items, we need all L1 and L2 items.
-// However, Level 2 now introduces 'Untung Kasar' item which is also in Level 1.
-// In Level 3 Combined, we only have one slot for Untung Kasar (the calculated one from L1).
-// So we should NOT include the extra 'Untung Kasar' card from Level 2 items list if we strictly concat them.
-// We will filter it out.
 const LEVEL_3_ITEMS = [
     ...LEVEL_1_ITEMS, 
     ...LEVEL_2_ITEMS.filter(i => i.label !== 'Untung Kasar')
